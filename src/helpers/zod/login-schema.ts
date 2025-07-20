@@ -16,10 +16,7 @@ const TraditionalSignInSchema = z.object({
 
 // Schema for magic link sign-in (email only)
 const MagicLinkSignInSchema = z.object({
-  email: z
-    .string()
-    .min(1, "Email is required")
-    .email("Must be a valid email"),
+  email: z.email("Must be a valid email"),
 });
 
 // Combined schema for dynamic sign-in

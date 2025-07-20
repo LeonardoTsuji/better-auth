@@ -97,7 +97,7 @@ const SignUp = () => {
                     {...field}
                     onChange={(e) => {
                       field.onChange(e); // Update form state
-                      const username = generateUsername(e.target.value);
+                      generateUsername(e.target.value);
                     }}
                   />
                 </FormControl>

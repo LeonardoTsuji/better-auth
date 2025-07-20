@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -25,11 +25,16 @@ import {
 import { Input } from "../ui/input";
 import { Button } from "../ui/button";
 
-// Import the schemas (adjusted to match likely export)
 import SignInSchema from "@/helpers/zod/login-schema";
 import { Mail, Mailbox } from "lucide-react";
 import { requestOTP } from "@/helpers/auth/request-otp";
-import { oneTapCall } from "./one-tap";
+
+// Schemas tipados
+const TraditionalSignInSchema = SignInSchema.options[0];
+const MagicLinkSignInSchema = SignInSchema.options[1];
+
+type TraditionalFormData = z.infer<typeof TraditionalSignInSchema>;
+type MagicLinkFormData = z.infer<typeof MagicLinkSignInSchema>;
 
 const SignIn = () => {
   const [signInMethod, setSignInMethod] = useState<"traditional" | "magicLink">(
@@ -46,124 +51,101 @@ const SignIn = () => {
     resetState,
   } = useAuthState();
 
-  useEffect(() => {
-    oneTapCall();
-  }, []);
-
-  // Infer schemas from the union
-  const TraditionalSignInSchema = SignInSchema.options[0];
-  const MagicLinkSignInSchema = SignInSchema.options[1];
-
-  // Dynamically select schema based on sign-in method
-  const currentSchema =
-    signInMethod === "traditional"
-      ? TraditionalSignInSchema
-      : MagicLinkSignInSchema;
-
-  const form = useForm<z.infer<typeof currentSchema>>({
-    resolver: zodResolver(currentSchema),
+  const traditionalForm = useForm<TraditionalFormData>({
+    resolver: zodResolver(TraditionalSignInSchema),
     defaultValues: {
       email: "",
-      ...(signInMethod === "traditional" ? { password: "" } : {}),
+      password: "",
     },
+    mode: "onChange",
   });
 
-  const onSubmit = async (values: z.infer<typeof currentSchema>) => {
+  const magicLinkForm = useForm<MagicLinkFormData>({
+    resolver: zodResolver(MagicLinkSignInSchema),
+    defaultValues: {
+      email: "",
+    },
+    mode: "onChange",
+  });
+
+  const onTraditionalSubmit = async (values: TraditionalFormData) => {
     resetState();
     setLoading(true);
 
     try {
-      if (signInMethod === "magicLink") {
-        // Magic Link sign-in
-        await signIn.magicLink(
-          { email: values.email },
-          {
-            onRequest: () => setLoading(true),
-            onResponse: () => setLoading(false),
-            onSuccess: () => {
-              setSuccess("A magic link has been sent to your email.");
-            },
-            onError: (ctx) => {
-              setError(ctx.error.message || "Failed to send magic link.");
-            },
-          }
-        );
-      } else {
-        // Traditional sign-in
-        const signInValues = values as z.infer<typeof TraditionalSignInSchema>;
+      const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(values.email);
 
-        // Determine if input is email
-        const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(signInValues.email);
-
-        if (isEmail) {
-          await signIn.email(
-            {
-              email: signInValues.email,
-              password: signInValues.password,
-            },
-            {
-              onRequest: () => setLoading(true),
-              onResponse: () => setLoading(false),
-              onSuccess: async (ctx) => {
-                if (ctx.data.twoFactorRedirect) {
-                  const response = await requestOTP();
-                  if (response?.data) {
-                    setSuccess("OTP has been sent to your email");
-                    router.push("/two-factor");
-                  } else if (response?.error) {
-                    setError(response.error.message);
-                  }
-                } else {
-                  setSuccess("Logged in successfully.");
-                  router.replace("/");
-                }
-              },
-              onError: (ctx) => {
-                setError(
-                  ctx.error.message || "Email login failed. Please try again."
-                );
-              },
+      await signIn.email(
+        {
+          email: values.email,
+          password: values.password,
+        },
+        {
+          onRequest: () => setLoading(true),
+          onResponse: () => setLoading(false),
+          onSuccess: async (ctx) => {
+            if (ctx.data.twoFactorRedirect) {
+              const response = await requestOTP();
+              if (response?.data) {
+                setSuccess("OTP has been sent to your email");
+                router.push("/two-factor");
+              } else if (response?.error) {
+                setError(response.error.message);
+              }
+            } else {
+              setSuccess("Logged in successfully.");
+              router.replace("/");
             }
-          );
-        } else {
-          await signIn.email(
-            {
-              email: signInValues.email,
-              password: signInValues.password,
-            },
-            {
-              onRequest: () => setLoading(true),
-              onResponse: () => setLoading(false),
-              onSuccess: async (ctx) => {
-                if (ctx.data.twoFactorRedirect) {
-                  const response = await requestOTP();
-                  if (response?.data) {
-                    setSuccess("OTP has been sent to your email");
-                    router.push("/two-factor");
-                  } else if (response?.error) {
-                    setError(response.error.message);
-                  }
-                } else {
-                  setSuccess("Logged in successfully.");
-                  router.replace("/");
-                }
-              },
-              onError: (ctx) => {
-                setError(
-                  ctx.error.message ||
-                    "Username login failed. Please try again."
-                );
-              },
-            }
-          );
+          },
+          onError: (ctx) => {
+            setError(
+              ctx.error.message ||
+                `${
+                  isEmail ? "Email" : "Username"
+                } login failed. Please try again.`
+            );
+          },
         }
-      }
+      );
     } catch (err) {
       console.error(err);
       setError("Something went wrong. Please try again.");
     } finally {
       setLoading(false);
     }
+  };
+
+  const onMagicLinkSubmit = async (values: MagicLinkFormData) => {
+    resetState();
+    setLoading(true);
+
+    try {
+      await signIn.magicLink(
+        { email: values.email },
+        {
+          onRequest: () => setLoading(true),
+          onResponse: () => setLoading(false),
+          onSuccess: () => {
+            setSuccess("A magic link has been sent to your email.");
+          },
+          onError: (ctx) => {
+            setError(ctx.error.message || "Failed to send magic link.");
+          },
+        }
+      );
+    } catch (err) {
+      console.error(err);
+      setError("Something went wrong. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const toggleSignInMethod = () => {
+    resetState();
+    setSignInMethod(
+      signInMethod === "traditional" ? "magicLink" : "traditional"
+    );
   };
 
   return (
@@ -174,87 +156,110 @@ const SignIn = () => {
       cardFooterLink="/signup"
       cardFooterLinkTitle="Sign up"
     >
-      <Form {...form}>
-        <form className="space-y-4" onSubmit={form.handleSubmit(onSubmit)}>
-          {/* Email or Username Field */}
-          <FormField
-            control={form.control}
-            name="email"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>
-                  {signInMethod === "magicLink" ? "Email" : "Email or Username"}
-                </FormLabel>
-                <FormControl>
-                  <Input
-                    disabled={loading}
-                    type="text"
-                    placeholder={
-                      signInMethod === "magicLink"
-                        ? "Enter your email"
-                        : "Enter email"
-                    }
-                    {...field}
-                  />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-
-          {/* Password Field (only for traditional sign-in) */}
-          {signInMethod === "traditional" && (
-            <FormField
-              control={form.control}
-              name="password"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Password</FormLabel>
-                  <FormControl>
-                    <Input
-                      disabled={loading}
-                      type="password"
-                      placeholder="********"
-                      {...field}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                  <Link
-                    href="/forgot-password"
-                    className="text-xs underline ml-60"
-                  >
-                    Forgot Password?
-                  </Link>
-                </FormItem>
-              )}
-            />
-          )}
-
-          {/* Error & Success Messages */}
-          <FormError message={error} />
-          <FormSuccess message={success} />
-
-          {/* Submit Button */}
-          <Button disabled={loading} type="submit" className="w-full">
-            {signInMethod === "magicLink" ? "Send Magic Link" : "Login"}
-          </Button>
-
-          {/* Social Buttons */}
-          <div className="flex justify-between mt-4">
-            <Button
-              type="button"
-              className="w-20"
-              onClick={() =>
-                setSignInMethod(
-                  signInMethod === "traditional" ? "magicLink" : "traditional"
-                )
-              }
+      {/* Renderização condicional com key para forçar remount */}
+      <div key={signInMethod}>
+        {signInMethod === "traditional" ? (
+          <Form {...traditionalForm}>
+            <form
+              className="space-y-4"
+              onSubmit={traditionalForm.handleSubmit(onTraditionalSubmit)}
             >
-              {signInMethod === "traditional" ? <Mailbox /> : <Mail />}
-            </Button>
-          </div>
-        </form>
-      </Form>
+              <FormField
+                control={traditionalForm.control}
+                name="email"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Email or Username</FormLabel>
+                    <FormControl>
+                      <Input
+                        {...field}
+                        disabled={loading}
+                        type="text"
+                        placeholder="Enter email"
+                        autoComplete="email"
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={traditionalForm.control}
+                name="password"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Password</FormLabel>
+                    <FormControl>
+                      <Input
+                        {...field}
+                        disabled={loading}
+                        type="password"
+                        placeholder="********"
+                        autoComplete="current-password"
+                      />
+                    </FormControl>
+                    <FormMessage />
+                    <Link
+                      href="/forgot-password"
+                      className="text-xs underline ml-60"
+                    >
+                      Forgot Password?
+                    </Link>
+                  </FormItem>
+                )}
+              />
+
+              <FormError message={error} />
+              <FormSuccess message={success} />
+
+              <Button disabled={loading} type="submit" className="w-full">
+                Login
+              </Button>
+            </form>
+          </Form>
+        ) : (
+          <Form {...magicLinkForm}>
+            <form
+              className="space-y-4"
+              onSubmit={magicLinkForm.handleSubmit(onMagicLinkSubmit)}
+            >
+              <FormField
+                control={magicLinkForm.control}
+                name="email"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Email</FormLabel>
+                    <FormControl>
+                      <Input
+                        {...field}
+                        disabled={loading}
+                        type="email"
+                        placeholder="Enter your email"
+                        autoComplete="email"
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormError message={error} />
+              <FormSuccess message={success} />
+
+              <Button disabled={loading} type="submit" className="w-full">
+                Send Magic Link
+              </Button>
+            </form>
+          </Form>
+        )}
+
+        <div className="flex justify-between mt-4">
+          <Button type="button" className="w-20" onClick={toggleSignInMethod}>
+            {signInMethod === "traditional" ? <Mailbox /> : <Mail />}
+          </Button>
+        </div>
+      </div>
     </CardWrapper>
   );
 };

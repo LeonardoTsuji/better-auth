@@ -3,13 +3,8 @@ import { db } from "@/db";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { schema } from "@/db/schema";
 import { resend } from "@/helpers/email/resend";
-import { ForgotPasswordSchema } from "@/helpers/zod/forgot-password-schema";
-import SignInSchema from "@/helpers/zod/login-schema";
-import { PasswordSchema, SignupSchema } from "@/helpers/zod/signup-schema";
-import { twoFactorSchema } from "@/helpers/zod/two-factor-schema";
 import { betterAuth } from "better-auth";
 import { magicLink, oneTap, twoFactor } from "better-auth/plugins";
-import { validator, ZodAdapter } from "validation-better-auth";
 
 export const auth = betterAuth({
   appName: "better_auth_nextjs",
@@ -73,14 +68,6 @@ export const auth = betterAuth({
         });
       },
     }),
-    validator([
-      { path: "/sign-up/email", adapter: ZodAdapter(SignupSchema) },
-      { path: "/sign-in/email", adapter: ZodAdapter(SignInSchema) },
-      { path: "/two-factor/enable", adapter: ZodAdapter(PasswordSchema) },
-      { path: "/two-factor/disable", adapter: ZodAdapter(PasswordSchema) },
-      { path: "/two-factor/verify-otp", adapter: ZodAdapter(twoFactorSchema) },
-      { path: "/forgot-password", adapter: ZodAdapter(ForgotPasswordSchema) },
-    ]),
     oneTap(),
   ],
 });
